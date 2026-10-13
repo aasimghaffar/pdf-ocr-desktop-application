@@ -7,6 +7,7 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
+import pymupdf
 from PySide6.QtCore import QObject, Signal
 
 from .gemini_ocr import GeminiOcr, OcrError
@@ -168,6 +169,8 @@ class Processor(QObject):
                     self._queued.clear()
                 if dropped:
                     self.log.emit(f"Skipping the remaining {dropped} file(s): they would fail the same way.")
+        except pymupdf.FileDataError:
+            self.log.emit(f"FAILED {src.name}: not a valid PDF file (damaged or still being copied).")
         except PermissionError as e:
             self.log.emit(f"FAILED {src.name}: cannot write {dst.name}. Is it open in another program? ({e})")
         except Exception as e:  # keep going with the next file

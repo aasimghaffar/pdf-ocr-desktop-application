@@ -16,13 +16,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..config import DEFAULT_MODEL, Settings, get_api_key, set_api_key
+from ..config import DEFAULT_MODEL, SUGGESTED_MODELS, Settings, get_api_key, set_api_key
 from ..gemini_ocr import list_models, test_api_key
 from ..pdf_builder import MODE_OVERLAY, MODE_TEXT
 
-SUGGESTED_MODELS = [DEFAULT_MODEL, "gemini-2.5-pro", "gemini-2.5-flash-lite"]
 OUTPUT_MODES = [
-    ("Text only (images and graphics removed)", MODE_TEXT),
+    ("Plain text (only the text of each page)", MODE_TEXT),
     ("Searchable scan (keep the original look)", MODE_OVERLAY),
 ]
 
@@ -71,7 +70,7 @@ class SettingsDialog(QDialog):
             self.mode_combo.addItem(label, mode)
         self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(settings.output_mode)))
         self.mode_combo.setToolTip(
-            "Text only: a clean PDF with just the extracted text, one page per scanned page.\n"
+            "Plain text: a new PDF with just the extracted text as plain lines, one page per scanned page.\n"
             "Searchable scan: keeps the scanned images and adds invisible, searchable text."
         )
 
@@ -135,6 +134,8 @@ class SettingsDialog(QDialog):
         current = self.model_combo.currentText()
         self.model_combo.clear()
         self.model_combo.addItems(models or SUGGESTED_MODELS)
+        if models and current not in models:
+            current = DEFAULT_MODEL if DEFAULT_MODEL in models else models[0]
         self.model_combo.setCurrentText(current)
 
     def accept(self) -> None:

@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..config import Settings, get_api_key
+from ..config import Settings, get_api_key, set_api_key
 from ..watcher import FolderWatcher, list_pdfs
 from ..worker import JobConfig, Processor
 from .settings_dialog import SettingsDialog
@@ -56,6 +56,23 @@ class MainWindow(QMainWindow):
             folders.addWidget(edit, row, 1)
             folders.addWidget(browse, row, 2)
             folders.addWidget(open_btn, row, 3)
+
+        # API key
+        self.key_edit = QLineEdit(get_api_key())
+        self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.key_edit.setPlaceholderText("Paste your Gemini API key")
+        self.key_edit.editingFinished.connect(self._save_key)
+        show_key = QPushButton("Show")
+        show_key.setCheckable(True)
+        show_key.toggled.connect(
+            lambda on: self.key_edit.setEchoMode(QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password)
+        )
+        save_key = QPushButton("Save")
+        save_key.clicked.connect(lambda _=False: self._save_key(announce=True))
+        folders.addWidget(QLabel("Gemini API key:"), 2, 0)
+        folders.addWidget(self.key_edit, 2, 1)
+        folders.addWidget(show_key, 2, 2)
+        folders.addWidget(save_key, 2, 3)
 
         # Controls
         self.settings_btn = QPushButton("Settings…")
@@ -100,7 +117,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         if not get_api_key():
-            self.log("No Gemini API key set yet. Open Settings to add one.")
+            self.log("No Gemini API key set yet. Paste it in the Gemini API key box above.")
         if self.settings.watch:
             self.watch_check.setChecked(True)
 
@@ -126,9 +143,24 @@ class MainWindow(QMainWindow):
         self.settings.output_dir = self.output_edit.text().strip()
         self.settings.save()
 
+    def _save_key(self, announce: bool = False) -> bool:
+        key = self.key_edit.text().strip()
+        if key != get_api_key():
+            try:
+                set_api_key(key)
+            except Exception as e:
+                QMessageBox.critical(self, "API key", f"Could not save the API key:\n\n{e}")
+                return False
+            announce = True
+        if announce:
+            self.log("API key saved." if key else "API key removed.")
+        return True
+
     def _prepare(self) -> bool:
         """Validate settings and hand the current config to the processor."""
         self._save_folders()
+        if not self._save_key():
+            return False
         src, dst = self.settings.input_dir, self.settings.output_dir
         if not src or not Path(src).is_dir():
             QMessageBox.warning(self, "Input folder", "Choose an existing input folder.")
@@ -146,11 +178,9 @@ class MainWindow(QMainWindow):
             return False
         api_key = get_api_key()
         if not api_key:
-            QMessageBox.information(self, "API key", "Please enter your Gemini API key.")
-            self._open_settings()
-            api_key = get_api_key()
-            if not api_key:
-                return False
+            QMessageBox.information(self, "API key", "Paste your Gemini API key in the box and try again.")
+            self.key_edit.setFocus()
+            return False
         self.processor.configure(
             JobConfig(
                 api_key=api_key,
@@ -166,7 +196,9 @@ class MainWindow(QMainWindow):
     # ---- actions -------------------------------------------------------------------------
 
     def _open_settings(self) -> None:
+        self._save_key()
         SettingsDialog(self.settings, self).exec()
+        self.key_edit.setText(get_api_key())
 
     def _process_now(self) -> None:
         if not self._prepare():
@@ -232,6 +264,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._save_folders()
+        self._save_key()
         if self.processor.is_busy():
             answer = QMessageBox.question(self, "Quit", "Files are still being processed. Stop and quit?")
             if answer != QMessageBox.StandardButton.Yes:

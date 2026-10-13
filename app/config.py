@@ -12,7 +12,13 @@ from keyring.errors import KeyringError
 APP_NAME = "PdfOcr"
 KEYRING_SERVICE = "PdfOcr"
 KEYRING_USER = "gemini"
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
+SUGGESTED_MODELS = [DEFAULT_MODEL, "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]
+
+
+def is_retired_model(name: str) -> bool:
+    """Gemini 1.x and 2.x models: new API keys can no longer use them."""
+    return name.startswith(("gemini-1", "gemini-2"))
 
 
 def _config_dir() -> Path:
@@ -43,7 +49,10 @@ class Settings:
         except (OSError, ValueError):
             return cls()
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in known})
+        settings = cls(**{k: v for k, v in data.items() if k in known})
+        if is_retired_model(settings.model):
+            settings.model = DEFAULT_MODEL
+        return settings
 
     def save(self) -> None:
         SETTINGS_FILE.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")

@@ -1,8 +1,8 @@
 """Builds the output PDF from a scanned PDF, one output page per input page.
 
 Two output modes:
-- MODE_TEXT:    a new PDF with only the extracted text, laid out where it was on the scan.
-                Images, logos and other graphics are dropped.
+- MODE_TEXT:    a new PDF with only the extracted text, written as plain lines from the top of
+                each page. The layout of the scan, its images and other graphics are dropped.
 - MODE_OVERLAY: the original scan with an invisible, searchable text layer on top.
 """
 from __future__ import annotations
@@ -33,11 +33,16 @@ RENDER_INVISIBLE = 3
 LINE_HEIGHT = 1.2          # CSS line-height used for visible text; font size = box height / this
 SCAN_IMAGE_COVERAGE = 0.5  # a page whose images cover this much of it is treated as a scan
 MAX_RENDER_PIXELS = 3500   # longest side of the image sent to OCR, whatever the DPI setting
+PLAIN_FONT_SIZE = 11       # plain text pages; shrunk only when a page's text would not fit
+PLAIN_MARGIN = 0.08        # page margin of plain text pages, as a fraction of the page width
+PARAGRAPH_GAP = 0.6        # height of a blank line between paragraphs, in lines
 _WHITESPACE = re.compile(r"\s+")
 
 
 class Ocr(Protocol):
     def extract_page(self, png: bytes) -> list[Line]: ...
+
+    def extract_text(self, png: bytes) -> list[str]: ...
 
 
 class Cancelled(Exception):
@@ -155,7 +160,7 @@ def convert(
                     if has_text and not _is_scan(page):
                         lines = existing_lines(page)  # born-digital page: reuse its text as is
                     else:
-                        lines = ocr.extract_page(_render(page, dpi))
+                        lines = layout_plain(ocr.extract_text(_render(page, dpi)), page.rect, fonts)
                         ocr_count += 1
                     target = out.new_page(width=page.rect.width, height=page.rect.height)
                     draw_visible_text(target, lines)
@@ -240,6 +245,75 @@ def _box_rect(box: tuple[int, int, int, int], rect: pymupdf.Rect) -> pymupdf.Rec
     )
 
 
+# ---- plain text pages (text-only mode) -------------------------------------------------------
+
+
+def layout_plain(texts: list[str], rect: pymupdf.Rect, fonts: FontSet) -> list[Line]:
+    """Stack plain text lines from the top of a page, wrapping long ones.
+
+    An empty string is a paragraph break. The text is shrunk only if it would not fit the page.
+    """
+    margin = min(54.0, rect.width * PLAIN_MARGIN)
+    avail_w, avail_h = rect.width - 2 * margin, rect.height - 2 * margin
+    rows: list[tuple[str, float] | None] = []  # (text, width at PLAIN_FONT_SIZE); None = gap
+    for raw in texts:
+        text = _clean(raw)
+        if text:
+            rows.extend(_wrap(text, avail_w, fonts))
+        elif rows and rows[-1] is not None:
+            rows.append(None)
+    while rows and rows[-1] is None:
+        rows.pop()
+    if not rows:
+        return []
+
+    units = sum(PARAGRAPH_GAP if row is None else 1 for row in rows)
+    size = min(PLAIN_FONT_SIZE, avail_h / (units * LINE_HEIGHT))
+    row_height = size * LINE_HEIGHT
+    lines = []
+    y = margin
+    for row in rows:
+        if row is None:
+            y += PARAGRAPH_GAP * row_height
+            continue
+        text, width = row
+        width = min(avail_w, width * size / PLAIN_FONT_SIZE)
+        x = margin + avail_w - width if _is_rtl(text) else margin
+        box = (
+            y / rect.height * 1000,
+            x / rect.width * 1000,
+            (y + row_height) / rect.height * 1000,
+            (x + width) / rect.width * 1000,
+        )
+        lines.append(Line(text, box))
+        y += row_height
+    return lines
+
+
+def _text_width(text: str, fonts: FontSet) -> float:
+    return sum(font.font.text_length(part, fontsize=PLAIN_FONT_SIZE) for font, part in fonts.runs(text))
+
+
+def _wrap(text: str, max_width: float, fonts: FontSet) -> list[tuple[str, float]]:
+    width = _text_width(text, fonts)
+    if width <= max_width:
+        return [(text, width)]
+    rows: list[tuple[str, float]] = []
+    current = ""
+    for word in text.split(" "):
+        # a word wider than the page (e.g. Chinese, which has no spaces) is cut between characters
+        pieces = [word] if _text_width(word, fonts) <= max_width else list(word)
+        for i, piece in enumerate(pieces):
+            joined = f"{current} {piece}" if current and i == 0 else current + piece
+            if current and _text_width(joined, fonts) > max_width:
+                rows.append((current, _text_width(current, fonts)))
+                joined = piece
+            current = joined
+    if current:
+        rows.append((current, _text_width(current, fonts)))
+    return rows
+
+
 # ---- visible text (text-only mode) -----------------------------------------------------------
 
 
@@ -287,9 +361,12 @@ def _html_line(text: str, bold: bool) -> str:
 
 
 def _css(font_size: float, wrap: bool = False) -> str:
+    # margins must be zeroed on body and p by name: with a "*" rule MuPDF keeps the default
+    # paragraph margins, and then shrinks every line to make it fit its box
     return (
-        f"* {{margin:0; padding:0; font-family:sans-serif; font-size:{font_size:.2f}px;"
-        f" line-height:{LINE_HEIGHT}; white-space:{'normal' if wrap else 'nowrap'}; color:black}}"
+        f"body {{margin:0; padding:0}} p {{margin:0; padding:0; font-family:sans-serif;"
+        f" font-size:{font_size:.2f}px; line-height:{LINE_HEIGHT};"
+        f" white-space:{'normal' if wrap else 'nowrap'}; color:black}}"
     )
 
 

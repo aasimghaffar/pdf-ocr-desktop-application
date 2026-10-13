@@ -9,7 +9,7 @@ from app.ui.main_window import MainWindow
 
 
 def main() -> int:
-    # The .exe has no console, so unexpected errors go to %APPDATA%\PdfOcrpp.log
+    # The .exe has no console, so unexpected errors go to %APPDATA%/PdfOcr/app.log
     handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=1, encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, handlers=[handler],
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")

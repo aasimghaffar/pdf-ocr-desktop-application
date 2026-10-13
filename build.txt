@@ -1,0 +1,8 @@
+Build and run
+From the project folder in PowerShell (close the app first if it is running, or the build cannot overwrite the exe):
+
+
+cd D:\work\python\desktop-app-pdf-ocr
+.\build.bat
+.\dist\PdfOcr.exe
+The build takes about 3 minutes. To run without building: .\.venv\Scripts\python.exe main.py.

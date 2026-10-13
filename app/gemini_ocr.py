@@ -11,8 +11,12 @@ from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel
 
+from .config import is_retired_model
+
 RETRYABLE_CODES = {429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
+# models that list generateContent but cannot read a page image into text
+_NOT_OCR = ("image", "tts", "audio", "live", "embedding", "robotics", "computer-use", "omni")
 REQUEST_TIMEOUT_MS = 180_000
 
 _IGNORE = """Extract ONLY the text. Ignore everything on the page that is not text: photos, pictures,
@@ -39,7 +43,10 @@ If the page has no text, return []."""
 PLAIN_PROMPT = f"""You are an OCR engine reading one scanned page.
 {_IGNORE}
 
-Output only the text, one line per visual line, in reading order, with no commentary."""
+Output only the text, one line per visual line, in natural reading order (top to bottom; in
+multi-column layouts finish one column before starting the next). Leave one empty line between
+paragraphs and between separate blocks of text. Write each table row on one line with its cells
+separated by " | ". No commentary, no markdown and no code fences."""
 
 
 class OcrLine(BaseModel):
@@ -111,6 +118,18 @@ class GeminiOcr:
             return [Line(line, None) for line in text.splitlines() if line.strip()]
         self.warn(f"Gemini returned no text ({_finish_reason(response)}); page left blank")
         return []
+
+    def extract_text(self, png: bytes) -> list[str]:
+        """Return the plain text of a page image, line by line; "" marks a paragraph break."""
+        image = types.Part.from_bytes(data=png, mime_type="image/png")
+        response = self._generate([image, PLAIN_PROMPT], types.GenerateContentConfig(temperature=0))
+        text = (response.text or "").strip()
+        if not text:
+            self.warn(f"Gemini returned no text ({_finish_reason(response)}); page left blank")
+            return []
+        if _finish_reason(response) == "MAX_TOKENS":
+            self.warn("the page has more text than Gemini can return at once; the end is missing")
+        return [line.strip() for line in text.splitlines() if not line.strip().startswith("```")]
 
     def _generate(self, contents, config):
         delay = 2.0
@@ -184,16 +203,20 @@ def test_api_key(api_key: str, model: str) -> str:
 
 
 def list_models(api_key: str) -> list[str]:
-    """Names of the models available to this key that support generateContent."""
+    """Names of the current text models available to this key (Gemini 1.x/2.x left out)."""
     client = _client(api_key)
     names = []
     try:
         for m in client.models.list():
             actions = getattr(m, "supported_actions", None) or []
-            if "generateContent" in actions and "gemini" in m.name:
-                names.append(m.name.removeprefix("models/"))
+            name = m.name.removeprefix("models/")
+            if "generateContent" not in actions or not name.startswith("gemini-"):
+                continue
+            if is_retired_model(name) or any(word in name for word in _NOT_OCR):
+                continue
+            names.append(name)
     except errors.APIError as e:
         raise _api_error(e) from e
     except httpx.TransportError as e:
         raise OcrError(f"Network error talking to Gemini: {e!r}") from e
-    return sorted(names)
+    return sorted(names, reverse=True)
