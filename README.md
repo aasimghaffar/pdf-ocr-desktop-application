@@ -1,56 +1,147 @@
-# Scanned PDF OCR (Gemini)
+# Scanned PDF OCR (Gemini Desktop Application)
 
-A Windows desktop app that takes scanned PDFs from an **input folder**, uses **Google Gemini** to read the text, and saves a **PDF with the same file name** in an **output folder**.
+An intelligent, cross-lingual Windows desktop application that automates the conversion of scanned PDF files into clean, searchable, and copyable digital documents using Google Gemini Vision AI.
 
-The output always has the same number of pages as the scan, and each page holds only the text from that page. There are two output types (see **Settings**):
+The application monitors an incoming folder or processes batches on-demand, transcribing scanned pages while preserving page counts, handling complex international scripts, and generating standard PDFs without requiring local machine learning hardware.
 
-- **Plain text** (default): a new PDF with just the text of each page, written as plain lines from the top of the page. The layout of the scan, photos, logos, stamps, signatures, lines and other graphics are all dropped.
-- **Searchable scan**: the original scan, unchanged, with an invisible text layer on top.
+---
 
-In both types you can search the text with Ctrl+F and copy it. This works for English, Urdu/Arabic, Hindi and other Indic scripts, and Chinese, Japanese and Korean.
+## 🌟 Key Features
 
-## Setup
+* **AI-Powered OCR via Google Gemini:** Utilizes latest Gemini vision models (e.g., `gemini-3.8-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-pro-preview`) for high-fidelity text transcription.
+* **Global Script & Multi-Language Support:** Flawlessly transcribes complex scripts, including:
+  * Right-to-Left (RTL): Urdu, Arabic, Persian, Hebrew (with bidirectional text shaping).
+  * Indic scripts: Hindi, Bengali, Tamil, etc.
+  * East Asian scripts: Chinese (Simplified/Traditional), Japanese, Korean.
+  * Latin and Cyrillic scripts.
+* **Dual Output Modes:**
+  * **Plain Text PDF (Default):** Generates a brand-new, clean PDF containing only transcribed text, arranged from top to bottom. Removes scan noise, stamps, smudges, pictures, and artifacts.
+  * **Searchable Scan (Overlay):** Preserves the original visual appearance of the scanned document while placing an invisible, selectable Unicode text layer directly over each line for search (Ctrl+F) and copy-paste.
+* **Token & Cost Optimization:** Automatically detects pages that already contain digital text and reuses their text layer without querying the Gemini API.
+* **Automated Folder Watching:** Background filesystem watcher detects newly added PDFs in the input folder and queues them as soon as file writes finish.
+* **Secure Credential Management:** Stores your Google Gemini API key securely in **Windows Credential Manager** (via `keyring`), never exposing keys in plain-text configuration files.
+* **Zero-Dependency Portable Build:** Can be compiled into a single, standalone Windows executable (`PdfOcr.exe`) that runs on any modern Windows PC without Python installed.
+
+---
+
+## 📋 System Requirements
+
+* **Operating System:** Windows 10 or Windows 11 (64-bit)
+* **Python Version:** Python 3.10 or higher (for running from source or building)
+* **Internet Connection:** Required for Google Gemini API communication
+* **Gemini API Key:** A free or paid key from [Google AI Studio](https://aistudio.google.com/apikey)
+
+---
+
+## 🚀 Setup & Installation (Run from Source)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/aasimghaffar/pdf-ocr-desktop-application.git
+cd pdf-ocr-desktop-application
+```
+
+### 2. Create and Activate Virtual Environment
+Open PowerShell or Command Prompt in the project root:
 
 ```bat
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python main.py
+.venv\Scripts\activate
 ```
 
-1. Paste your Gemini API key in the **Gemini API key** box and click **Save** (get one at https://aistudio.google.com/apikey). To check it, open **Settings…** and click **Test key**.
-   The key is stored in Windows Credential Manager, not in a plain file.
-2. Pick the **Input folder** and the **Output folder**. They must be different folders.
-3. Click **Process now** to convert every PDF in the input folder, or turn on
-   **Watch input folder** to convert new PDFs automatically as they arrive.
+### 3. Install Dependencies
+```bat
+pip install -r requirements.txt
+```
 
-Files that already exist in the output folder are skipped unless you turn on **Overwrite** in Settings.
-Pages that are already digital text (not scans) reuse their own text and are not sent to Gemini.
+### 4. Run the Application
+```bat
+python main.py
+```
+*(Or run directly with `.venv\Scripts\python.exe main.py`)*
 
-## Settings
+---
 
-| Setting | Default | Notes |
-|---|---|---|
-| Model | `gemini-3.8-flash` | Click **Refresh list** to see the models available to your key. |
-| Output PDF | Plain text | Choose **Plain text** (only the text of each page) or **Searchable scan** (keeps the original look). |
-| Page render DPI | 200 | Use a higher value for small print. Higher values are slower and cost more tokens. |
-| Overwrite | off | Re-create output PDFs that already exist. |
+## 🖥️ User Guide & Configuration
 
-Settings are saved in `%APPDATA%\PdfOcr\settings.json`.
+### Step 1: Set Your Gemini API Key
+1. Obtain an API key from [Google AI Studio](https://aistudio.google.com/apikey).
+2. Launch the application, paste your API key into the **Gemini API Key** field, and click **Save**.
+3. To verify connectivity, open **Settings…** and click **Test key**.
 
-## Build a standalone .exe
+### Step 2: Select Folders
+* **Input Folder:** Select the folder containing incoming scanned PDF files.
+* **Output Folder:** Select a separate destination folder where processed PDFs will be saved.
+
+### Step 3: Choose Processing Mode
+* **Process Now:** Immediately processes all unprocessed PDFs found in the input directory.
+* **Watch Input Folder:** Enables real-time background monitoring to automatically process new documents as they are copied or downloaded into the input directory.
+
+---
+
+## ⚙️ Application Settings
+
+Click **Settings…** in the main toolbar to customize behavior:
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| **Model** | `gemini-3.8-flash` | Select your desired Gemini model. Click **Refresh list** to query models supported by your API key. |
+| **Output PDF** | `Plain text` | Choose between **Plain text** (clean text-only layout) or **Searchable scan** (original scan with invisible selectable text). |
+| **Page Render DPI** | `200` | Resolution used to render page images for OCR. Higher DPI improves clarity for small fonts but uses more processing time. |
+| **Overwrite** | `Off` | When enabled, existing files in the output directory will be re-processed and overwritten. |
+
+*Settings and logs are stored under `%APPDATA%\PdfOcr\` (`settings.json` and `app.log`).*
+
+---
+
+## 📦 Building Standalone Executable (.exe)
+
+You can compile the application into a standalone Windows `.exe` using the included build script:
 
 ```bat
 build.bat
 ```
 
-This creates `dist\PdfOcr.exe`. Copy it anywhere; it does not need Python installed.
+This compiles a single-file portable binary located at:
+```text
+dist\PdfOcr.exe
+```
+This executable can be distributed to clients or end users and does not require Python or external packages to run.
 
-## How it works
+---
 
-- `app/gemini_ocr.py`: sends one page image per request, so text can never move to another page. The prompt tells Gemini to return only text (ignoring images, logos, stamps, signatures, lines and noise) as JSON lines with bounding boxes and a bold flag. Rate-limit and server errors are retried with backoff.
-- `app/pdf_builder.py`: creates one output page per input page.
-  - **Plain text:** Gemini returns the page as plain text; the lines are stacked from the top of the page (long ones wrapped, the font shrunk only if the page would overflow) and drawn with MuPDF's HTML engine, so Arabic, Urdu and Indic scripts are shaped correctly, and then drawn as vector outlines.
-  - **Both modes:** an invisible text layer with the exact Unicode sits on top. Search and copy use this layer.
-  - **No positions from Gemini:** the text is still added, but without its original layout.
-- `app/worker.py`: background queue, so the window stays responsive.
-- `app/watcher.py`: watches the input folder and waits until a file has finished copying before queuing it.
+## 🏗️ Project Architecture
+
+```text
+desktop-app-pdf-ocr/
+├── app/
+│   ├── ui/
+│   │   ├── main_window.py       # Main Qt window, queue status, progress tracking
+│   │   └── settings_dialog.py   # Settings modal and API key testing interface
+│   ├── config.py                # Persistent settings (JSON) and secure Keyring helper
+│   ├── gemini_ocr.py            # Gemini API client, rate limiting, and prompt orchestrator
+│   ├── pdf_builder.py           # PyMuPDF rendering, text shaping (Bidi/Arabic), and PDF creation
+│   ├── watcher.py               # Background directory observer for incoming files
+│   └── worker.py                # Multi-threaded task worker queue
+├── build.bat                    # Automated PyInstaller build script
+├── main.py                      # Application entry point
+├── PdfOcr.spec                  # PyInstaller specification file
+├── requirements.txt             # Python dependencies
+└── README.md                    # Project documentation
+```
+
+---
+
+## 📝 Logging & Diagnostics
+
+If an unexpected error occurs in the compiled `.exe` or during execution, logs are automatically recorded to:
+```text
+%APPDATA%\PdfOcr\app.log
+```
+Logs rotate automatically (1 MB limit, 1 backup file) to avoid consuming unnecessary disk space.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
